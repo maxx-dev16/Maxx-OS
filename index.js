@@ -76,7 +76,7 @@ class MusicPlayer {
     this.currentTrack = null;
     this.isPlaying = false;
     this.connection = null;
-    this.volume = 0.5;
+    this.volume = 0.3;
     
     this.setupAudioPlayer();
     this.connectToVoice();
