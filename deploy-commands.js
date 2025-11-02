@@ -53,8 +53,43 @@ const commands = [
     description: 'Resume the paused song'
   },
   {
-    name: 'debug',
-    description: 'Debug music player status'
+    name: 'clear',
+    description: 'Delete a number of messages',
+    options: [
+      {
+        name: 'amount',
+        description: 'Number of messages to delete (1-100)',
+        type: 4, // INTEGER
+        required: true,
+        min_value: 1,
+        max_value: 100
+      }
+    ]
+  },
+  // 🔹 Neue Quests und Shop Commands
+  {
+    name: 'quests',
+    description: 'Zeige deine aktuellen Quests an'
+  },
+  {
+    name: 'quests_new',
+    description: 'Erneuere die Daily Quests (Admin only)'
+  },
+  {
+    name: 'shop',
+    description: 'Zeige den Shop an'
+  },
+  {
+    name: 'buy',
+    description: 'Kaufe ein Item aus dem Shop',
+    options: [
+      {
+        name: 'item',
+        description: 'Name des Items das du kaufen möchtest',
+        type: 3, // STRING
+        required: true
+      }
+    ]
   }
 ];
 

@@ -1,0 +1,47 @@
+{
+  "categories": {
+    "farben": [
+      {
+        "name": "Rot",
+        "price": 150,
+        "role_id": "ROLE_ID_FÜR_ROT",
+        "emoji": "🔴"
+      },
+      {
+        "name": "Blau", 
+        "price": 150,
+        "role_id": "ROLE_ID_FÜR_BLAU",
+        "emoji": "🔵"
+      },
+      {
+        "name": "Grün",
+        "price": 150, 
+        "role_id": "ROLE_ID_FÜR_GRÜN",
+        "emoji": "🟢"
+      }
+    ],
+    "rollen": [
+      {
+        "name": "Premium",
+        "price": 800,
+        "role_id": "ROLE_ID_FÜR_PREMIUM",
+        "emoji": "🌸",
+        "description": "Erhalte die Premium Rolle."
+      },
+      {
+        "name": "Elite", 
+        "price": 1000,
+        "role_id": "1434571559934234777",
+        "emoji": "🏅",
+        "description": "Erhalte die Elite Rolle."
+      },
+      {
+        "name": "VIP",
+        "price": 1500,
+        "role_id": "1434571287816306789", 
+        "emoji": "🏆",
+        "description": "Erhalte die VIP Rolle."
+      }
+    ]
+  }
+}

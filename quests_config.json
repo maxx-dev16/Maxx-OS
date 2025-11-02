@@ -1,0 +1,43 @@
+{
+  "quests_channel": "1434546092309217452",
+  "shop_channel": "1434546182947995818",
+  "daily_quests_count": 3,
+  "possible_quests": [
+    {
+      "id": "meme",
+      "description": "Schick heute ein Meme!",
+      "reward": 25,
+      "type": "message"
+    },
+    {
+      "id": "voice_15min",
+      "description": "Sei 15 min mit 2 anderen Usern im Voicechat",
+      "reward": 40,
+      "type": "voice"
+    },
+    {
+      "id": "messages_10",
+      "description": "Schreibe 10 Nachrichten heute",
+      "reward": 30,
+      "type": "message_count"
+    },
+    {
+      "id": "reaction_5",
+      "description": "Reagiere auf 5 verschiedene Nachrichten",
+      "reward": 20,
+      "type": "reaction"
+    },
+    {
+      "id": "voice_30min",
+      "description": "Sei 30 Minuten im Voicechat",
+      "reward": 60,
+      "type": "voice_time"
+    },
+    {
+      "id": "invite_1",
+      "description": "Lade 1 Person auf den Server ein",
+      "reward": 50,
+      "type": "invite"
+    }
+  ]
+}
