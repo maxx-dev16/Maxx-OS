@@ -175,6 +175,14 @@ const SHOP_CONFIG = {
 const LOG_CHANNEL_ID = "1434572776999485603";
 const MAX_LOG_MESSAGES = 500;
 
+// 🔹 Werbung Konfiguration
+const ADVERTISEMENT_CONFIG = {
+  enabled: true,
+  channelId: "1432030850324627576", // Control Channel als Standard
+  interval: 43200000, // 1 Stunde in Millisekunden
+  message: "☁️ Willkommen auf Maxxcloud | Maxx Community! 💫\n\nDu suchst einen Ort zum Zocken, Quatschen und Gewinnen?\nDann bist du bei uns genau richtig! 😎\n\n╔ 🎮 Games & Turniere\n╠ 🎁 Regelmäßige Giveaways\n╠ 💬 Chillige Talks & Voicechats\n╠ 🧩 Individuelle Rollenverwaltung\n╠ 🏆 Belohnungssystem für aktive Mitglieder\n╠ 💖 Nette & hilfsbereite Community\n╠ 🛠️ Support- & Bewerbungssystem\n╠ 🗳️ Umfragen, Events & mehr\n╚ 🌈 und vieles mehr erwartet dich!\n\nKomm vorbei, werde Teil der Maxxcloud und lerne großartige Leute kennen!\nHier zählt Spaß, Gemeinschaft und eine gute Stimmung. ☕\n\n🔗 Invite: https://dsc.gg/maxxcloud-community\n\n🌩️ Maxxcloud – Deine Community über den Wolken!"
+};
+
 // Test DB Connection und erstelle Tabellen falls nicht vorhanden
 async function initializeDatabase() {
   try {
@@ -262,7 +270,8 @@ try {
     controlChannelId: "SET_ME_IN_CONFIG_JSON", 
     categoryId: "SET_ME_IN_CONFIG_JSON",
     ticketChannelId: "1434502097537204304",
-    staffRoleId: "1414700262941130927"
+    staffRoleId: "1414700262941130927",
+    advertisement: ADVERTISEMENT_CONFIG
   };
   
   fs.writeFileSync("./config.json", JSON.stringify(config, null, 2));
@@ -305,6 +314,97 @@ const activeTempTalks = new Map();
 const ticketSessions = new Map();
 const userVoiceSessions = new Map();
 const channelMessages = new Map();
+
+// 🔹 Werbung Intervall
+let advertisementInterval = null;
+
+// 🔹 Werbung-Feature
+function startAdvertisement() {
+  const advertisementConfig = config.advertisement || ADVERTISEMENT_CONFIG;
+  
+  if (!advertisementConfig.enabled) {
+    console.log('❌ Werbung-Feature ist deaktiviert');
+    return;
+  }
+
+  const channelId = advertisementConfig.channelId;
+  const interval = advertisementConfig.interval || 3600000; // Standard: 1 Stunde
+  const message = advertisementConfig.message;
+
+  if (!channelId) {
+    console.log('❌ Keine Channel-ID für Werbung konfiguriert');
+    return;
+  }
+
+  // Altes Intervall clearen falls vorhanden
+  if (advertisementInterval) {
+    clearInterval(advertisementInterval);
+  }
+
+  // Neues Intervall setzen
+  advertisementInterval = setInterval(async () => {
+    try {
+      const channel = await client.channels.fetch(channelId);
+      if (channel && channel.isTextBased()) {
+        
+        // Schönes Embed erstellen
+        const embed = new EmbedBuilder()
+          .setTitle('🌩️ Willkommen auf Maxxcloud | Maxx Community!')
+          .setDescription(message)
+          .setColor(0x00AE86)
+          .setTimestamp()
+          .setFooter({ text: 'Maxxcloud – Deine Community über den Wolken!' });
+
+        // Nachricht senden
+        const sentMessage = await channel.send({ embeds: [embed] });
+        console.log(`✅ Werbung gepostet in #${channel.name}`);
+        
+        // 🔥 WICHTIG: Automatisch in Ankündigungs-Channels veröffentlichen
+        if (channel.type === ChannelType.GuildAnnouncement) {
+          try {
+            // Crosspost (veröffentlichen) die Nachricht
+            await sentMessage.crosspost();
+            console.log(`📢 Werbung wurde automatisch veröffentlicht/gecrossposted!`);
+            
+            // Log crosspost
+            await logAction(
+              'Werbung Veröffentlicht',
+              `Automatische Werbung wurde in #${channel.name} veröffentlicht und an Follower gesendet`,
+              0x2ECC71
+            );
+          } catch (crosspostError) {
+            console.error('❌ Fehler beim Veröffentlichen der Werbung:', crosspostError);
+            
+            // Log crosspost error
+            await logAction(
+              'Werbung Veröffentlichung Fehlgeschlagen',
+              `Konnte Werbung in #${channel.name} nicht veröffentlichen: ${crosspostError.message}`,
+              0xE74C3C
+            );
+          }
+        } else {
+          // Normales Log für Nicht-Ankündigungs-Channels
+          await logAction(
+            'Werbung Gepostet',
+            `Automatische Werbung wurde in #${channel.name} gepostet`,
+            0x3498DB
+          );
+        }
+      }
+    } catch (error) {
+      console.error('❌ Fehler beim Posten der Werbung:', error);
+      
+      // Log error
+      await logAction(
+        'Werbung Fehler',
+        `Fehler beim Posten der Werbung in Channel ${channelId}: ${error.message}`,
+        0xE74C3C
+      );
+    }
+  }, interval);
+
+  console.log(`✅ Werbung-Feature gestartet - Intervall: ${interval / 60000} Minuten`);
+}
 
 // 🔹 Logging System
 async function logAction(action, description, color = 0x3498DB, user = null) {
@@ -1396,6 +1496,7 @@ class MusicPlayer {
       .setTitle('🎵 Now Playing')
       .setDescription(`**${track.title}**`)
       .setColor(0x00FF00)
+      .setFooter({ text: '🎵 Musik' })
       .addFields(
         { name: '👤 Artist', value: track.author, inline: true },
         { name: '⏱️ Duration', value: track.duration, inline: true },
@@ -1413,6 +1514,7 @@ class MusicPlayer {
       .setTitle('🔥 Added to Queue')
       .setDescription(`**${track.title}**`)
       .setColor(0x0099FF)
+      .setFooter({ text: '🎵 Musik' })
       .addFields(
         { name: '👤 Artist', value: track.author, inline: true },
         { name: '⏱️ Duration', value: track.duration, inline: true },
@@ -1429,7 +1531,8 @@ class MusicPlayer {
     const embed = new EmbedBuilder()
       .setTitle('🏁 Queue Ended')
       .setDescription('The music queue has ended. Add more songs to continue!')
-      .setColor(0xFFA500);
+      .setColor(0xFFA500)
+      .setFooter({ text: '🎵 Musik' });
 
     if (this.textChannel) {
       await this.textChannel.send({ embeds: [embed] });
@@ -1594,6 +1697,7 @@ async function searchCommand(interaction) {
       .setTitle('🔍 Available Songs')
       .setDescription(songList)
       .setColor(0x0099FF)
+      .setFooter({ text: '🎵 Musik' })
       .setFooter({ 
         text: `Found ${availableSongs.length} songs • Use /play "song name" to play` 
       });
@@ -1645,6 +1749,7 @@ async function listSongsCommand(interaction) {
       .setTitle('📋 All Available Songs')
       .setDescription(songList)
       .setColor(0x00FF00)
+      .setFooter({ text: '🎵 Musik' })
       .setFooter({ 
         text: `Total: ${mp3Files.length} songs • Use /play "song name" to play` 
       });
@@ -1721,6 +1826,7 @@ async function queueCommand(interaction) {
     .setTitle('📋 Music Queue')
     .setDescription(queueList)
     .setColor(0x0099FF)
+    .setFooter({ text: '🎵 Musik' })
     .setFooter({ text: `Total: ${currentQueue.length} songs` });
 
   await interaction.reply({ embeds: [queueEmbed] });
@@ -1813,6 +1919,140 @@ async function clearCommand(interaction) {
     await interaction.editReply({ 
       content: '❌ Failed to delete messages! They might be older than 14 days.' 
     });
+  }
+}
+
+// 🔹 Werbung Commands
+async function advertisementCommand(interaction) {
+  if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+    return interaction.reply({ 
+      content: '❌ Nur Administratoren können diesen Befehl nutzen!', 
+      ephemeral: true 
+    });
+  }
+
+  const action = interaction.options.getString('action');
+  const interval = interaction.options.getInteger('interval');
+
+  const advertisementConfig = config.advertisement || ADVERTISEMENT_CONFIG;
+
+  if (action === 'start') {
+    advertisementConfig.enabled = true;
+    if (interval) {
+      advertisementConfig.interval = interval * 60000; // Minuten zu Millisekunden
+    }
+    
+    // Config speichern
+    config.advertisement = advertisementConfig;
+    fs.writeFileSync('./config.json', JSON.stringify(config, null, 2));
+    
+    startAdvertisement();
+    await interaction.reply({ 
+      content: `✅ Werbung-Feature gestartet! Intervall: ${advertisementConfig.interval / 60000} Minuten\n📢 Ankündigungen werden automatisch veröffentlicht!`, 
+      ephemeral: true 
+    });
+    
+    // Log advertisement start
+    await logAction(
+      'Werbung Gestartet',
+      `${interaction.user.tag} hat das Werbung-Feature gestartet (Intervall: ${advertisementConfig.interval / 60000} Minuten)`,
+      0x2ECC71,
+      interaction.user
+    );
+    
+  } else if (action === 'stop') {
+    advertisementConfig.enabled = false;
+    config.advertisement = advertisementConfig;
+    fs.writeFileSync('./config.json', JSON.stringify(config, null, 2));
+    
+    if (advertisementInterval) {
+      clearInterval(advertisementInterval);
+      advertisementInterval = null;
+    }
+    
+    await interaction.reply({ 
+      content: '⏹️ Werbung-Feature gestoppt!', 
+      ephemeral: true 
+    });
+    
+    // Log advertisement stop
+    await logAction(
+      'Werbung Gestoppt',
+      `${interaction.user.tag} hat das Werbung-Feature gestoppt`,
+      0xE74C3C,
+      interaction.user
+    );
+    
+  } else if (action === 'post') {
+    try {
+      const channel = await client.channels.fetch(advertisementConfig.channelId);
+      if (channel && channel.isTextBased()) {
+        const embed = new EmbedBuilder()
+          .setTitle('🌩️ Willkommen auf Maxxcloud | Maxx Community!')
+          .setDescription(advertisementConfig.message)
+          .setColor(0x00AE86)
+          .setTimestamp()
+          .setFooter({ text: 'Maxxcloud – Deine Community über den Wolken!' });
+
+        // Nachricht senden
+        const sentMessage = await channel.send({ embeds: [embed] });
+        
+        // 🔥 WICHTIG: Automatisch in Ankündigungs-Channels veröffentlichen
+        if (channel.type === ChannelType.GuildAnnouncement) {
+          try {
+            // Crosspost (veröffentlichen) die Nachricht
+            await sentMessage.crosspost();
+            console.log(`📢 Werbung wurde automatisch veröffentlicht/gecrossposted!`);
+            
+            await interaction.reply({ 
+              content: `✅ Werbung manuell gepostet und VERÖFFENTLICHT in #${channel.name}!`, 
+              ephemeral: true 
+            });
+            
+            // Log manual advertisement with crosspost
+            await logAction(
+              'Werbung Manuell Gepostet & Veröffentlicht',
+              `${interaction.user.tag} hat Werbung manuell in #${channel.name} gepostet und veröffentlicht`,
+              0x2ECC71,
+              interaction.user
+            );
+          } catch (crosspostError) {
+            console.error('❌ Fehler beim Veröffentlichen der Werbung:', crosspostError);
+            await interaction.reply({ 
+              content: `✅ Werbung gepostet in #${channel.name}, aber Veröffentlichung fehlgeschlagen!`, 
+              ephemeral: true 
+            });
+            
+            // Log crosspost error
+            await logAction(
+              'Werbung Veröffentlichung Fehlgeschlagen',
+              `${interaction.user.tag} - Konnte Werbung in #${channel.name} nicht veröffentlichen: ${crosspostError.message}`,
+              0xE74C3C,
+              interaction.user
+            );
+          }
+        } else {
+          await interaction.reply({ 
+            content: `✅ Werbung manuell gepostet in #${channel.name}!`, 
+            ephemeral: true 
+          });
+          
+          // Log manual advertisement
+          await logAction(
+            'Werbung Manuell Gepostet',
+            `${interaction.user.tag} hat Werbung manuell in #${channel.name} gepostet`,
+            0x3498DB,
+            interaction.user
+          );
+        }
+      }
+    } catch (error) {
+      console.error('Error posting advertisement:', error);
+      await interaction.reply({ 
+        content: '❌ Fehler beim Posten der Werbung!', 
+        ephemeral: true 
+      });
+    }
   }
 }
 
@@ -2330,6 +2570,26 @@ const commands = [
           .setDescription('Name des Items das du kaufen möchtest')
           .setRequired(true)),
     execute: buyCommand
+  },
+  // Werbung Command
+  {
+    data: new SlashCommandBuilder()
+      .setName('werbung')
+      .setDescription('Steuere das Werbung-Feature (Admin only)')
+      .addStringOption(option =>
+        option.setName('action')
+          .setDescription('Aktion ausführen')
+          .setRequired(true)
+          .addChoices(
+            { name: 'Start', value: 'start' },
+            { name: 'Stop', value: 'stop' },
+            { name: 'Posten', value: 'post' }
+          ))
+      .addIntegerOption(option =>
+        option.setName('interval')
+          .setDescription('Intervall in Minuten (nur bei start)')
+          .setRequired(false)),
+    execute: advertisementCommand
   }
 ];
 
@@ -3115,6 +3375,10 @@ client.once(Events.ClientReady, async () => {
     }
     
     console.log('✅ Quests and Shop messages initialized successfully');
+    
+    // 🔹 Werbung-Feature starten
+    console.log('🔄 Starting advertisement feature...');
+    startAdvertisement();
     
   } catch (error) {
     console.error('❌ Error initializing Quests/Shop messages:', error);

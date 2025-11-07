@@ -66,7 +66,8 @@ const commands = [
       }
     ]
   },
-  // 🔹 Neue Quests und Shop Commands
+
+  // 🔹 Quests und Shop Commands
   {
     name: 'quests',
     description: 'Zeige deine aktuellen Quests an'
@@ -90,10 +91,46 @@ const commands = [
         required: true
       }
     ]
+  },
+
+  // 🔹 Werbung Command
+  {
+    name: 'werbung',
+    description: 'Steuere das Werbung-Feature (Admin only)',
+    options: [
+      {
+        name: 'action',
+        description: 'Aktion ausführen',
+        type: 3, // STRING
+        required: true,
+        choices: [
+          {
+            name: 'Start',
+            value: 'start'
+          },
+          {
+            name: 'Stop',
+            value: 'stop'
+          },
+          {
+            name: 'Posten',
+            value: 'post'
+          }
+        ]
+      },
+      {
+        name: 'interval',
+        description: 'Intervall in Minuten (nur bei start)',
+        type: 4, // INTEGER
+        required: false,
+        min_value: 1,
+        max_value: 1440 // Maximal 24 Stunden
+      }
+    ]
   }
 ];
 
-const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
+const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
 async function deployCommands() {
   try {
@@ -139,6 +176,9 @@ async function deployCommands() {
       console.log('🔍 Problem: Missing Access - Make sure the bot is added to the server');
     } else if (error.code === 50013) {
       console.log('🔍 Problem: Missing Permissions - Bot needs "applications.commands" scope');
+    } else if (error.code === 50035) {
+      console.log('🔍 Problem: Invalid Form Body - Check command structure');
+      console.log('Error details:', error.rawError);
     }
   }
 }

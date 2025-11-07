@@ -3,5 +3,11 @@
   "controlChannelId": "1432030850324627576",
   "categoryId": "1432030531519778918",
   "ticketChannelId": "1434502097537204304",
-  "staffRoleId": "1432402733318537228"
+  "staffRoleId": "1432402733318537228",
+  "advertisement": {
+    "enabled": true,
+    "channelId": "1434483369722511412",
+    "interval": 3600000,
+    "message": "☁️ Willkommen auf Maxxcloud | Maxx Community! 💫\n\nDu suchst einen Ort zum Zocken, Quatschen und Gewinnen?\nDann bist du bei uns genau richtig! 😎\n\n╔ 🎮 Games & Turniere\n╠ 🎁 Regelmäßige Giveaways\n╠ 💬 Chillige Talks & Voicechats\n╠ 🧩 Individuelle Rollenverwaltung\n╠ 🏆 Belohnungssystem für aktive Mitglieder\n╠ 💖 Nette & hilfsbereite Community\n╠ 🛠️ Support- & Bewerbungssystem\n╠ 🗳️ Umfragen, Events & mehr\n╚ 🌈 und vieles mehr erwartet dich!\n\nKomm vorbei, werde Teil der Maxxcloud und lerne großartige Leute kennen!\nHier zählt Spaß, Gemeinschaft und eine gute Stimmung. ☕\n\n🔗 Invite: https://dsc.gg/maxxcloud-community\n\n🌩️ Maxxcloud – Deine Community über den Wolken!"
+  }
 }
