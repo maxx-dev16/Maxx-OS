@@ -31,6 +31,145 @@ import {
   VoiceConnectionStatus
 } from '@discordjs/voice';
 
+// 🔹 Web Panel Import
+import panelApp, { setBot } from './panel-server.js';
+
+// ==================== BOT STATS ====================
+async function initBotStatsTable() {
+  try {
+    const connection = await pool.getConnection();
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS bot_stats (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        totalUsers INT DEFAULT 0,
+        totalWarnings INT DEFAULT 0,
+        uptime INT DEFAULT 0,
+        botStatus VARCHAR(50) DEFAULT 'online',
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_timestamp (timestamp)
+      )
+    `);
+    
+    // Create channels table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS bot_channels (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        channel_id VARCHAR(255) UNIQUE,
+        channel_name VARCHAR(255),
+        channel_type VARCHAR(50),
+        guild_id VARCHAR(255),
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      )
+    `);
+    
+    // Create roles table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS bot_roles (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        role_id VARCHAR(255) UNIQUE,
+        role_name VARCHAR(255),
+        guild_id VARCHAR(255),
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      )
+    `);
+    
+    connection.release();
+    console.log('✅ bot_stats, bot_channels, bot_roles tables initialized');
+  } catch (error) {
+    console.error('❌ Error initializing bot tables:', error);
+  }
+}
+
+async function updateBotStats(client) {
+  try {
+    const connection = await pool.getConnection();
+    
+    // Berechne Uptime in Sekunden
+    const uptime = Math.floor(client.uptime / 1000);
+    const totalUsers = client.users.cache.size;
+    
+    try {
+      // Zähle alle Verwarnungen aus user_warns Tabelle
+      const [warns] = await connection.query('SELECT COUNT(*) as count FROM user_warns');
+      const totalWarnings = warns[0]?.count || 0;
+      
+      // Aktualısiere bot_stats
+      await connection.query(
+        'INSERT INTO bot_stats (totalUsers, totalWarnings, uptime, botStatus, timestamp) VALUES (?, ?, ?, ?, NOW())',
+        [totalUsers, totalWarnings, uptime, 'online']
+      );
+      
+      console.log(`📊 [Bot Stats] Users: ${totalUsers}, Warnings: ${totalWarnings}, Uptime: ${uptime}s`);
+    } catch (queryError) {
+      console.error('❌ Query error in updateBotStats:', queryError.message);
+    }
+    
+    connection.release();
+  } catch (error) {
+    console.error('❌ Error updating bot stats (connection):', error.message);
+  }
+}
+
+function startBotStatsUpdate(client) {
+  console.log('⏱️ Starting bot stats update loop (every 5 seconds)');
+  setInterval(() => {
+    updateBotStats(client);
+    // updateChannelsAndRoles(client); // Temporarily disabled for debugging
+  }, 5000);
+}
+
+async function updateChannelsAndRoles(client) {
+  try {
+    const guildId = '1432030848686153748';
+    const guild = client.guilds.cache.get(guildId);
+    
+    if (!guild) {
+      return; // Guild not available yet, skip
+    }
+    
+    const connection = await pool.getConnection();
+    
+    // Clear old entries
+    await connection.query('DELETE FROM bot_channels WHERE guild_id = ?', [guildId]);
+    await connection.query('DELETE FROM bot_roles WHERE guild_id = ?', [guildId]);
+    
+    // Insert channels (text channels only) - use Promise.all for parallel inserts
+    const channelPromises = [];
+    guild.channels.cache.forEach(channel => {
+      if (channel.type === 0) { // TEXT_CHANNEL
+        channelPromises.push(
+          connection.query(
+            'INSERT INTO bot_channels (channel_id, channel_name, channel_type, guild_id) VALUES (?, ?, ?, ?)',
+            [channel.id, channel.name, channel.type, guildId]
+          ).catch(err => console.error('Error inserting channel:', err.message))
+        );
+      }
+    });
+    
+    // Insert roles
+    const rolePromises = [];
+    guild.roles.cache.forEach(role => {
+      if (role.name !== '@everyone') {
+        rolePromises.push(
+          connection.query(
+            'INSERT INTO bot_roles (role_id, role_name, guild_id) VALUES (?, ?, ?)',
+            [role.id, role.name, guildId]
+          ).catch(err => console.error('Error inserting role:', err.message))
+        );
+      }
+    });
+    
+    await Promise.all([...channelPromises, ...rolePromises]);
+    connection.release();
+    
+    const textChannelCount = guild.channels.cache.filter(c => c.type === 0).size;
+    const roleCount = guild.roles.cache.size - 1;
+    console.log(`📡 [Guild Sync] Updated ${textChannelCount} channels and ${roleCount} roles`);
+  } catch (error) {
+    console.error('❌ Error updating channels/roles:', error.message);
+  }
+}
+
 // 🔹 Lade Umgebungsvariablen (.env)
 dotenv.config();
 
@@ -183,6 +322,92 @@ const ADVERTISEMENT_CONFIG = {
   message: "☁️ Willkommen auf Maxxcloud | Maxx Community! 💫\n\nDu suchst einen Ort zum Zocken, Quatschen und Gewinnen?\nDann bist du bei uns genau richtig! 😎\n\n╔ 🎮 Games & Turniere\n╠ 🎁 Regelmäßige Giveaways\n╠ 💬 Chillige Talks & Voicechats\n╠ 🧩 Individuelle Rollenverwaltung\n╠ 🏆 Belohnungssystem für aktive Mitglieder\n╠ 💖 Nette & hilfsbereite Community\n╠ 🛠️ Support- & Bewerbungssystem\n╠ 🗳️ Umfragen, Events & mehr\n╚ 🌈 und vieles mehr erwartet dich!\n\nKomm vorbei, werde Teil der Maxxcloud und lerne großartige Leute kennen!\nHier zählt Spaß, Gemeinschaft und eine gute Stimmung. ☕\n\n🔗 Invite: https://dsc.gg/maxxcloud-community\n\n🌩️ Maxxcloud – Deine Community über den Wolken!"
 };
 
+// 🔹 Bad Words Filter
+const BAD_WORDS = [
+  // German bad words
+  "Aalficker", "Armleuchter", "Arsch", "Arschgeige", "Arschgesicht", "Arschloch", "Bastard", "Blödian", "Blödmann",
+  "Bratze", "Clown", "Depp", "Drullje", "Drecksack", "Drecksau", "Dreckschwein", "Dussel", "Ekel", "Erbsenzähler",
+  "Fatzke", "Feigling", "Ficker", "Fotze", "Früchtchen", "Hackfresse", "Hanswurst", "Holzkopf", "Hohlkopf", "Hitler",
+  "Hornochse", "Hurensohn", "Idiot", "Kackbratze", "Kackvogel", "Korinthenkacker", "Kotzbrocken", "Krüppel", "Lackaffe",
+  "Lappen", "Lusche", "Missgeburt", "Miststück", "Möchtegern", "Motschgurgel", "Opfer", "Pimmel", "Penner", "Pisser",
+  "Plattnase", "Proll", "Rotzlöffel", "Sau", "Scheusal", "Scheißkerl", "Scheißkopf", "Schlampe", "Schmock", "Schrottkopf",
+  "Schweinehund", "Spinner", "Stinkstiefel", "Strunzbüggel", "Taugenichts", "Trampel", "Trantüte", "Trottel", "Tunte",
+  "Unhold", "Verbrecher", "Vollidiot", "Vollpfosten", "Warmduscher", "Weichei", "Wichser", "Witzfigur", "Ziegenpeter",
+
+  // English bad words
+  "anus", "arse", "arsehole", "ass", "asshole", "assclown", "asshat", "badger", "bastard", "beaver", "bimbo", "bitch",
+  "blackguard", "bloody", "bozo", "bugger", "bullshit", "butthead", "clown", "crank", "crap", "cunt", "dick", "dickhead",
+  "dingleberry", "douche", "douchebag", "dumbass", "egghead", "fatso", "fuck", "fuckface", "fuckhead", "goddamn", "goof",
+  "jackass", "jerk", "knob", "knobhead", "looser", "loser", "motherfucker", "moron", "nerd", "nitwit", "pissoff", "prick",
+  "pussy", "ratbag", "shit", "shitface", "shithead", "shite", "sissy", "slut", "sonofabitch", "twat", "wanker", "weirdo",
+  "wimp", "wuss", "jackwagon"
+];
+
+// 🔹 Greeting System
+const GREETING_TRIGGERS = [
+  // German greetings
+  "hallo", "hi", "hey", "guten tag", "guten morgen", "guten abend", "guten nacht", "moin", "servus", "grüß dich",
+  "grüß gott", "tag", "morgen", "abend", "nacht", "huhu", "hai", "jo", "sup", "was geht", "wie gehts",
+
+  // English greetings
+  "hello", "good morning", "good afternoon", "good evening", "good night", "morning", "afternoon", "evening",
+  "night", "sup", "yo", "wassup", "howdy", "greetings", "salutations"
+];
+
+const GREETING_RESPONSES = [
+  "Hallo {user}! 👋",
+  "Hey {user}! 😊",
+  "Hi {user}! Wie geht's? ✨",
+  "Guten Tag {user}! 🌟",
+  "Moin {user}! ☀️",
+  "Servus {user}! 👋",
+  "Grüß dich {user}! 🌈",
+  "Huhu {user}! 😄",
+  "Hey hey {user}! 🚀",
+  "Hi {user}! Schön dich zu sehen! 💫"
+];
+
+// 🔹 Greeting Response Funktion
+async function checkAndRespondToGreeting(message) {
+  if (message.author.bot) return false;
+
+  const content = message.content.toLowerCase().trim();
+
+  // Prüfe ob die Nachricht eine Begrüßung enthält
+  for (const trigger of GREETING_TRIGGERS) {
+    if (content.includes(trigger)) {
+      // Zufällige Begrüßung auswählen
+      const randomResponse = GREETING_RESPONSES[Math.floor(Math.random() * GREETING_RESPONSES.length)];
+      const personalizedResponse = randomResponse.replace('{user}', message.author.username);
+
+      try {
+        await message.reply({
+          content: personalizedResponse,
+          allowedMentions: { repliedUser: true }
+        });
+
+        // Log greeting response
+        await logAction(
+          'Begrüßung Beantwortet',
+          `${message.author.tag} wurde in #${message.channel.name} begrüßt`,
+          0x00FF00,
+          message.author
+        );
+
+        return true;
+      } catch (error) {
+        console.error('Error sending greeting response:', error);
+        return false;
+      }
+    }
+  }
+
+  return false;
+}
+
+// 🔹 Auto-Role Konfiguration
+const AUTO_ROLE_ID = "1434271769929187489";
+
 // Test DB Connection und erstelle Tabellen falls nicht vorhanden
 async function initializeDatabase() {
   try {
@@ -247,6 +472,52 @@ async function initializeDatabase() {
       )
     `);
     console.log('✅ user_inventory table checked/created');
+
+    // Warns und User Info Tabellen
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS user_warns (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id VARCHAR(255) NOT NULL,
+        user_tag VARCHAR(255) NOT NULL,
+        moderator_id VARCHAR(255) NOT NULL,
+        moderator_tag VARCHAR(255) NOT NULL,
+        reason TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX user_idx (user_id)
+      )
+    `);
+    console.log('✅ user_warns table checked/created');
+
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS user_notes (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id VARCHAR(255) NOT NULL,
+        user_tag VARCHAR(255) NOT NULL,
+        moderator_id VARCHAR(255) NOT NULL,
+        moderator_tag VARCHAR(255) NOT NULL,
+        note TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX user_idx (user_id)
+      )
+    `);
+    console.log('✅ user_notes table checked/created');
+
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS user_bans (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id VARCHAR(255) NOT NULL,
+        user_tag VARCHAR(255) NOT NULL,
+        moderator_id VARCHAR(255) NOT NULL,
+        moderator_tag VARCHAR(255) NOT NULL,
+        reason TEXT NOT NULL,
+        duration VARCHAR(255),
+        permanent BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        expires_at TIMESTAMP NULL,
+        INDEX user_idx (user_id)
+      )
+    `);
+    console.log('✅ user_bans table checked/created');
     
     connection.release();
   } catch (error) {
@@ -460,6 +731,273 @@ async function cleanupLogChannel() {
   }
 }
 
+// 🔹 Bad Words Filter Funktion
+async function checkBadWords(message) {
+  if (message.author.bot) return false;
+  
+  const content = message.content.toLowerCase();
+  
+  for (const badWord of BAD_WORDS) {
+    if (content.includes(badWord.toLowerCase())) {
+      console.log(`🚨 Bad word detected: "${badWord}" from ${message.author.tag}`);
+      
+      // Ping im Log-Channel
+      const logChannel = client.channels.cache.get(LOG_CHANNEL_ID);
+      if (logChannel) {
+        const embed = new EmbedBuilder()
+          .setTitle('🚨 Bad Word Detected!')
+          .setDescription(`**User:** ${message.author} (${message.author.tag})\n**Channel:** ${message.channel}\n**Nachricht:** ${message.content}`)
+          .setColor(0xFF0000)
+          .setTimestamp();
+        
+        await logChannel.send({ 
+          content: `<@1414700262941130927>`, // Ping für Mod-Team
+          embeds: [embed] 
+        });
+      }
+      
+      // Antwort an User
+      await message.reply({ 
+        content: "🚫 Dieses Verhalten ist nicht schön bzw erlaubt! Das Mod team wird eventuell maßnahmen ergreifen!",
+        ephemeral: false 
+      });
+      
+      // Log bad word detection
+      await logAction(
+        'Bad Word Erkannt',
+        `${message.author.tag} hat ein verbotenes Wort verwendet: "${badWord}" in #${message.channel.name}`,
+        0xFF0000,
+        message.author
+      );
+      
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+// 🔹 Auto-Role Funktion
+async function assignAutoRole(member) {
+  try {
+    const role = member.guild.roles.cache.get(AUTO_ROLE_ID);
+    if (!role) {
+      console.error(`❌ Auto-Role ${AUTO_ROLE_ID} nicht gefunden!`);
+      return;
+    }
+    
+    if (!member.roles.cache.has(AUTO_ROLE_ID)) {
+      await member.roles.add(role);
+      console.log(`✅ Auto-Role "${role.name}" an ${member.user.tag} gegeben`);
+      
+      // Log auto-role assignment
+      await logAction(
+        'Auto-Role Vergeben',
+        `${member.user.tag} hat die Auto-Role "${role.name}" erhalten`,
+        0x00FF00,
+        member.user
+      );
+    }
+  } catch (error) {
+    console.error('❌ Fehler beim Vergeben der Auto-Role:', error);
+  }
+}
+
+// 🔹 Auto-Role für alle Mitglieder beim Start
+async function assignAutoRolesToAll() {
+  try {
+    console.log('🔄 Überprüfe Auto-Roles für alle Mitglieder...');
+    
+    for (const guild of client.guilds.cache.values()) {
+      const role = guild.roles.cache.get(AUTO_ROLE_ID);
+      if (!role) {
+        console.error(`❌ Auto-Role ${AUTO_ROLE_ID} nicht gefunden in Guild ${guild.name}!`);
+        continue;
+      }
+      
+      let assignedCount = 0;
+      const members = await guild.members.fetch();
+      
+      for (const member of members.values()) {
+        if (!member.user.bot && !member.roles.cache.has(AUTO_ROLE_ID)) {
+          try {
+            await member.roles.add(role);
+            assignedCount++;
+            console.log(`✅ Auto-Role an ${member.user.tag} gegeben`);
+          } catch (error) {
+            console.error(`❌ Konnte Auto-Role nicht an ${member.user.tag} geben:`, error.message);
+          }
+        }
+      }
+      
+      console.log(`✅ ${assignedCount} Auto-Roles in ${guild.name} vergeben`);
+      
+      if (assignedCount > 0) {
+        await logAction(
+          'Auto-Roles Vergeben',
+          `${assignedCount} Mitglieder haben die Auto-Role "${role.name}" erhalten`,
+          0x00FF00
+        );
+      }
+    }
+  } catch (error) {
+    console.error('❌ Fehler beim Vergeben der Auto-Roles:', error);
+  }
+}
+
+// 🔹 Warn System Funktionen
+async function addWarn(userId, userTag, moderatorId, moderatorTag, reason) {
+  try {
+    await pool.query(
+      'INSERT INTO user_warns (user_id, user_tag, moderator_id, moderator_tag, reason) VALUES (?, ?, ?, ?, ?)',
+      [userId, userTag, moderatorId, moderatorTag, reason]
+    );
+    
+    const [warns] = await pool.query('SELECT COUNT(*) as count FROM user_warns WHERE user_id = ?', [userId]);
+    const warnCount = warns[0].count;
+    
+    // Log warn
+    await logAction(
+      'User Verwarnung',
+      `${moderatorTag} hat ${userTag} verwarnt (Grund: ${reason}) - Aktuelle Warns: ${warnCount}`,
+      0xFFA500,
+      { tag: userTag }
+    );
+    
+    return warnCount;
+  } catch (error) {
+    console.error('Error adding warn:', error);
+    return 0;
+  }
+}
+
+async function getUserWarns(userId) {
+  try {
+    const [warns] = await pool.query('SELECT * FROM user_warns WHERE user_id = ? ORDER BY created_at DESC', [userId]);
+    return warns;
+  } catch (error) {
+    console.error('Error getting user warns:', error);
+    return [];
+  }
+}
+
+async function clearWarns(userId) {
+  try {
+    const [result] = await pool.query('DELETE FROM user_warns WHERE user_id = ?', [userId]);
+    return result.affectedRows;
+  } catch (error) {
+    console.error('Error clearing warns:', error);
+    return 0;
+  }
+}
+
+// 🔹 User Notes Funktionen
+async function addUserNote(userId, userTag, moderatorId, moderatorTag, note) {
+  try {
+    await pool.query(
+      'INSERT INTO user_notes (user_id, user_tag, moderator_id, moderator_tag, note) VALUES (?, ?, ?, ?, ?)',
+      [userId, userTag, moderatorId, moderatorTag, note]
+    );
+    
+    // Log note
+    await logAction(
+      'User Notiz Hinzugefügt',
+      `${moderatorTag} hat Notiz für ${userTag} hinzugefügt: ${note}`,
+      0x3498DB,
+      { tag: userTag }
+    );
+    
+    return true;
+  } catch (error) {
+    console.error('Error adding user note:', error);
+    return false;
+  }
+}
+
+async function getUserNotes(userId) {
+  try {
+    const [notes] = await pool.query('SELECT * FROM user_notes WHERE user_id = ? ORDER BY created_at DESC', [userId]);
+    return notes;
+  } catch (error) {
+    console.error('Error getting user notes:', error);
+    return [];
+  }
+}
+
+// 🔹 Ban System Funktionen
+async function addBan(userId, userTag, moderatorId, moderatorTag, reason, duration = null, permanent = false) {
+  try {
+    let expiresAt = null;
+    
+    if (!permanent && duration) {
+      const durationMs = parseDuration(duration);
+      if (durationMs) {
+        expiresAt = new Date(Date.now() + durationMs);
+      }
+    }
+    
+    await pool.query(
+      'INSERT INTO user_bans (user_id, user_tag, moderator_id, moderator_tag, reason, duration, permanent, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [userId, userTag, moderatorId, moderatorTag, reason, duration, permanent, expiresAt]
+    );
+    
+    // Log ban
+    const banType = permanent ? 'Permanent Ban' : `Temp Ban (${duration})`;
+    await logAction(
+      'User Gebannt',
+      `${moderatorTag} hat ${userTag} ${banType} gegeben (Grund: ${reason})`,
+      0xFF0000,
+      { tag: userTag }
+    );
+    
+    return true;
+  } catch (error) {
+    console.error('Error adding ban:', error);
+    return false;
+  }
+}
+
+async function getUserBans(userId) {
+  try {
+    const [bans] = await pool.query('SELECT * FROM user_bans WHERE user_id = ? ORDER BY created_at DESC', [userId]);
+    return bans;
+  } catch (error) {
+    console.error('Error getting user bans:', error);
+    return [];
+  }
+}
+
+function parseDuration(duration) {
+  const units = {
+    's': 1000,
+    'm': 60 * 1000,
+    'h': 60 * 60 * 1000,
+    'd': 24 * 60 * 60 * 1000,
+    'w': 7 * 24 * 60 * 60 * 1000
+  };
+  
+  const match = duration.match(/^(\d+)([smhdw])$/);
+  if (match) {
+    const amount = parseInt(match[1]);
+    const unit = match[2];
+    return amount * units[unit];
+  }
+  
+  return null;
+}
+
+function formatDuration(ms) {
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  
+  if (days > 0) return `${days} Tag(en)`;
+  if (hours > 0) return `${hours} Stunde(n)`;
+  if (minutes > 0) return `${minutes} Minute(n)`;
+  return `${seconds} Sekunde(n)`;
+}
+
 // 🔹 Quests System Funktionen
 function generateDailyQuests() {
   const allQuests = QUESTS_CONFIG.possible_quests;
@@ -634,19 +1172,56 @@ async function checkAndCompleteQuests(userId, questData) {
   }
 }
 
-// 🔹 Nachrichten-Management für Quests und Shop
+// 🔹 Nachrichten-Management für Quests und Shop - VERBESSERTE VERSION
+async function checkAndUpdateChannelMessage(channelId, expectedEmbed, expectedComponents = []) {
+  try {
+    const channel = client.channels.cache.get(channelId);
+    if (!channel) {
+      console.error(`❌ Channel ${channelId} nicht gefunden!`);
+      return false;
+    }
+
+    // Prüfe die letzte Bot-Nachricht im Channel
+    const messages = await channel.messages.fetch({ limit: 10 });
+    const botMessages = messages.filter(msg => msg.author.bot && (msg.embeds.length > 0 || msg.components.length > 0));
+    
+    if (botMessages.size > 0) {
+      const lastBotMessage = botMessages.first();
+      
+      // Prüfe ob die Nachricht bereits die richtige ist
+      if (lastBotMessage.embeds.length > 0) {
+        const existingEmbed = lastBotMessage.embeds[0];
+        
+        // Vereinfachter Vergleich: Prüfe Titel und Beschreibung
+        if (existingEmbed.title === expectedEmbed.data.title && 
+            existingEmbed.description === expectedEmbed.data.description) {
+          console.log(`✅ Nachricht in Channel ${channel.name} ist bereits aktuell`);
+          channelMessages.set(channelId, lastBotMessage.id);
+          return true;
+        }
+      }
+    }
+
+    // Wenn keine passende Nachricht gefunden wurde, erstelle eine neue
+    console.log(`🔄 Erstelle/aktualisiere Nachricht in Channel ${channel.name}`);
+    return await updateChannelMessage(channelId, expectedEmbed, expectedComponents);
+  } catch (error) {
+    console.error(`Error checking channel message ${channelId}:`, error);
+    return false;
+  }
+}
+
 async function updateChannelMessage(channelId, embed, components = []) {
   try {
     const channel = client.channels.cache.get(channelId);
     if (!channel) {
       console.error(`❌ Channel ${channelId} nicht gefunden!`);
-      return;
+      return false;
     }
 
-    // Alte Nachrichten im Channel löschen (außer Systemnachrichten)
-    const messages = await channel.messages.fetch({ limit: 50 });
+    // Alte Bot-Nachrichten im Channel löschen
+    const messages = await channel.messages.fetch({ limit: 20 });
     for (const [id, message] of messages) {
-      // Lösche nur Bot-Nachrichten, die Shop/Quests betreffen
       if (message.author.bot && (message.embeds.length > 0 || message.components.length > 0)) {
         await message.delete().catch(() => {});
       }
@@ -671,9 +1246,10 @@ async function updateChannelMessage(channelId, embed, components = []) {
       0x9B59B6
     );
     
-    return newMessage;
+    return true;
   } catch (error) {
     console.error(`Error updating channel message ${channelId}:`, error);
+    return false;
   }
 }
 
@@ -719,7 +1295,8 @@ async function createQuestsMessage() {
       .setStyle(ButtonStyle.Primary)
   );
 
-  await updateChannelMessage(QUESTS_CONFIG.quests_channel, embed, row);
+  // VERBESSERT: Prüfe zuerst ob die Nachricht bereits korrekt ist
+  return await checkAndUpdateChannelMessage(QUESTS_CONFIG.quests_channel, embed, row);
 }
 
 async function createShopMessage() {
@@ -795,7 +1372,8 @@ async function createShopMessage() {
       .setStyle(ButtonStyle.Secondary)
   );
 
-  await updateChannelMessage(QUESTS_CONFIG.shop_channel, embed, row);
+  // VERBESSERT: Prüfe zuerst ob die Nachricht bereits korrekt ist
+  return await checkAndUpdateChannelMessage(QUESTS_CONFIG.shop_channel, embed, row);
 }
 
 // 🔹 Tägliches Reset der Quests
@@ -899,14 +1477,24 @@ async function cleanupTempTalk(channelId, talkData) {
   }
 }
 
-// 🔹 DM TICKET SYSTEM - MIT BIDIREKTIONALER KOMMUNIKATION
+// 🔹 Message Handler für Begrüßungen und DM Tickets
 client.on(Events.MessageCreate, async (message) => {
+    // Prüfe auf Begrüßungen
+    if (!message.author.bot) {
+        await checkAndRespondToGreeting(message);
+    }
+
+    // DM Ticket System
   // Ignoriere Nachrichten von Bots
   if (message.author.bot) return;
 
   console.log(`📨 Message received from ${message.author.tag}: "${message.content}"`);
   console.log(`   Channel Type: ${message.channel.type}`);
   console.log(`   Guild: ${message.guild ? message.guild.name : 'DM'}`);
+
+  // 🔹 Bad Words Filter
+  const hasBadWord = await checkBadWords(message);
+  if (hasBadWord) return;
 
   // 🔹 Quest Tracking: Nachrichten zählen
   if (message.guild) {
@@ -1922,6 +2510,355 @@ async function clearCommand(interaction) {
   }
 }
 
+// 🔹 Warn Command
+async function warnCommand(interaction) {
+  if (!interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers)) {
+    return interaction.reply({ 
+      content: '❌ Du hast keine Berechtigung um User zu verwarnen!', 
+      ephemeral: true 
+    });
+  }
+
+  const user = interaction.options.getUser('user');
+  const reason = interaction.options.getString('grund') || 'Kein Grund angegeben';
+
+  try {
+    // Warn in Datenbank speichern
+    const warnCount = await addWarn(
+      user.id, 
+      user.tag, 
+      interaction.user.id, 
+      interaction.user.tag, 
+      reason
+    );
+
+    // DM an den User senden
+    try {
+      const warnEmbed = new EmbedBuilder()
+        .setTitle('⚠️ Verwarnung')
+        .setDescription(`Du hast eine Verwarnung auf **${interaction.guild.name}** erhalten!`)
+        .setColor(0xFFA500)
+        .addFields(
+          { name: '📋 Grund', value: reason, inline: false },
+          { name: '👤 Moderator', value: interaction.user.tag, inline: true },
+          { name: '🔢 Aktuelle Warns', value: `${warnCount}`, inline: true }
+        )
+        .setFooter({ text: 'Bei weiteren Verstößen können strengere Maßnahmen folgen!' })
+        .setTimestamp();
+
+      await user.send({ embeds: [warnEmbed] });
+    } catch (dmError) {
+      console.error('Konnte DM nicht senden:', dmError);
+    }
+
+    const embed = new EmbedBuilder()
+      .setTitle('✅ User verwarnt')
+      .setDescription(`${user.tag} wurde erfolgreich verwarnt!`)
+      .setColor(0x00FF00)
+      .addFields(
+        { name: '📋 Grund', value: reason, inline: false },
+        { name: '👤 Moderator', value: interaction.user.tag, inline: true },
+        { name: '🔢 Aktuelle Warns', value: `${warnCount}`, inline: true }
+      );
+
+    await interaction.reply({ embeds: [embed] });
+
+  } catch (error) {
+    console.error('Warn command error:', error);
+    await interaction.reply({ 
+      content: '❌ Fehler beim Verwarnen des Users!', 
+      ephemeral: true 
+    });
+  }
+}
+
+// 🔹 UserInfo Command
+async function userinfoCommand(interaction) {
+  const user = interaction.options.getUser('user') || interaction.user;
+
+  try {
+    // Daten aus Datenbank abrufen
+    const warns = await getUserWarns(user.id);
+    const notes = await getUserNotes(user.id);
+    const bans = await getUserBans(user.id);
+    const questData = await getUserQuestData(user.id);
+
+    const embed = new EmbedBuilder()
+      .setTitle(`📊 User Info - ${user.tag}`)
+      .setThumbnail(user.displayAvatarURL())
+      .setColor(0x3498DB)
+      .addFields(
+        { name: '👤 User', value: `${user} (${user.id})`, inline: true },
+        { name: '📅 Erstellt', value: `<t:${Math.floor(user.createdTimestamp / 1000)}:R>`, inline: true },
+        { name: '⚠️ Verwarnungen', value: `${warns.length}`, inline: true }
+      );
+
+    // Warns anzeigen
+    if (warns.length > 0) {
+      const recentWarns = warns.slice(0, 3);
+      const warnText = recentWarns.map(warn => 
+        `**${new Date(warn.created_at).toLocaleDateString('de-DE')}:** ${warn.reason} (von ${warn.moderator_tag})`
+      ).join('\n');
+      
+      if (warns.length > 3) {
+        embed.addFields({
+          name: `📝 Letzte ${recentWarns.length} Warns`,
+          value: warnText + `\n*... und ${warns.length - 3} weitere*`,
+          inline: false
+        });
+      } else {
+        embed.addFields({
+          name: '📝 Verwarnungen',
+          value: warnText,
+          inline: false
+        });
+      }
+    }
+
+    // Notes anzeigen
+    if (notes.length > 0) {
+      const recentNotes = notes.slice(0, 3);
+      const noteText = recentNotes.map(note => 
+        `**${new Date(note.created_at).toLocaleDateString('de-DE')}:** ${note.note} (von ${note.moderator_tag})`
+      ).join('\n');
+      
+      if (notes.length > 3) {
+        embed.addFields({
+          name: `📋 Letzte ${recentNotes.length} Notizen`,
+          value: noteText + `\n*... und ${notes.length - 3} weitere*`,
+          inline: false
+        });
+      } else {
+        embed.addFields({
+          name: '📋 Notizen',
+          value: noteText,
+          inline: false
+        });
+      }
+    }
+
+    // Bans anzeigen
+    if (bans.length > 0) {
+      const activeBans = bans.filter(ban => ban.permanent || new Date(ban.expires_at) > new Date());
+      if (activeBans.length > 0) {
+        const ban = activeBans[0];
+        const banType = ban.permanent ? 'Permanent' : `Temp (bis <t:${Math.floor(new Date(ban.expires_at).getTime() / 1000)}:R>)`;
+        embed.addFields({
+          name: '🔨 Aktiver Ban',
+          value: `**Typ:** ${banType}\n**Grund:** ${ban.reason}\n**Moderator:** ${ban.moderator_tag}`,
+          inline: false
+        });
+      }
+    }
+
+    // Quest Daten anzeigen
+    if (questData) {
+      embed.addFields({
+        name: '🎯 Quests & Coins',
+        value: `**Coins:** ${questData.total_coins}\n**Nachrichten:** ${questData.message_count || 0}\n**Voice Time:** ${questData.voice_time || 0}min`,
+        inline: true
+      });
+    }
+
+    await interaction.reply({ embeds: [embed] });
+
+  } catch (error) {
+    console.error('UserInfo command error:', error);
+    await interaction.reply({ 
+      content: '❌ Fehler beim Abrufen der User-Informationen!', 
+      ephemeral: true 
+    });
+  }
+}
+
+// 🔹 UserInfoAdd Command
+async function userinfoaddCommand(interaction) {
+  if (!interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers)) {
+    return interaction.reply({ 
+      content: '❌ Du hast keine Berechtigung um Notizen hinzuzufügen!', 
+      ephemeral: true 
+    });
+  }
+
+  const user = interaction.options.getUser('user');
+  const note = interaction.options.getString('notiz');
+
+  try {
+    const success = await addUserNote(
+      user.id, 
+      user.tag, 
+      interaction.user.id, 
+      interaction.user.tag, 
+      note
+    );
+
+    if (success) {
+      const embed = new EmbedBuilder()
+        .setTitle('✅ Notiz hinzugefügt')
+        .setDescription(`Notiz für ${user.tag} wurde erfolgreich hinzugefügt!`)
+        .setColor(0x00FF00)
+        .addFields(
+          { name: '📝 Notiz', value: note, inline: false },
+          { name: '👤 Moderator', value: interaction.user.tag, inline: true }
+        );
+
+      await interaction.reply({ embeds: [embed] });
+    } else {
+      await interaction.reply({ 
+        content: '❌ Fehler beim Hinzufügen der Notiz!', 
+        ephemeral: true 
+      });
+    }
+
+  } catch (error) {
+    console.error('UserInfoAdd command error:', error);
+    await interaction.reply({ 
+      content: '❌ Fehler beim Hinzufügen der Notiz!', 
+      ephemeral: true 
+    });
+  }
+}
+
+// 🔹 Ban Command
+async function banCommand(interaction) {
+  if (!interaction.member.permissions.has(PermissionsBitField.Flags.BanMembers)) {
+    return interaction.reply({ 
+      content: '❌ Du hast keine Berechtigung um User zu bannen!', 
+      ephemeral: true 
+    });
+  }
+
+  const user = interaction.options.getUser('user');
+  const reason = interaction.options.getString('grund') || 'Kein Grund angegeben';
+  const duration = interaction.options.getString('dauer');
+  const permanent = interaction.options.getBoolean('permanent') || false;
+
+  try {
+    // Prüfe ob der Bot den User bannen kann
+    const member = await interaction.guild.members.fetch(user.id).catch(() => null);
+    if (member) {
+      if (!member.bannable) {
+        return interaction.reply({ 
+          content: '❌ Ich kann diesen User nicht bannen!', 
+          ephemeral: true 
+        });
+      }
+    }
+
+    // Ban in Datenbank speichern
+    const success = await addBan(
+      user.id, 
+      user.tag, 
+      interaction.user.id, 
+      interaction.user.tag, 
+      reason, 
+      duration, 
+      permanent
+    );
+
+    if (success) {
+      // DM an den User senden
+      try {
+        const banEmbed = new EmbedBuilder()
+          .setTitle('🔨 Ban')
+          .setDescription(`Du wurdest auf **${interaction.guild.name}** gebannt!`)
+          .setColor(0xFF0000)
+          .addFields(
+            { name: '📋 Grund', value: reason, inline: false },
+            { name: '👤 Moderator', value: interaction.user.tag, inline: true }
+          );
+
+        if (permanent) {
+          banEmbed.addFields({ name: '⏰ Dauer', value: 'Permanent', inline: true });
+        } else if (duration) {
+          banEmbed.addFields({ name: '⏰ Dauer', value: duration, inline: true });
+        }
+
+        banEmbed.setFooter({ text: 'Du kannst einen Entbannungsantrag stellen, wenn du denkst dass dies ein Fehler war.' })
+               .setTimestamp();
+
+        await user.send({ embeds: [banEmbed] });
+      } catch (dmError) {
+        console.error('Konnte DM nicht senden:', dmError);
+      }
+
+      // User bannen
+      await interaction.guild.members.ban(user.id, { reason: reason });
+
+      const embed = new EmbedBuilder()
+        .setTitle('✅ User gebannt')
+        .setDescription(`${user.tag} wurde erfolgreich gebannt!`)
+        .setColor(0x00FF00)
+        .addFields(
+          { name: '📋 Grund', value: reason, inline: false },
+          { name: '👤 Moderator', value: interaction.user.tag, inline: true }
+        );
+
+      if (permanent) {
+        embed.addFields({ name: '⏰ Dauer', value: 'Permanent', inline: true });
+      } else if (duration) {
+        embed.addFields({ name: '⏰ Dauer', value: duration, inline: true });
+      }
+
+      await interaction.reply({ embeds: [embed] });
+
+    } else {
+      await interaction.reply({ 
+        content: '❌ Fehler beim Bannen des Users!', 
+        ephemeral: true 
+      });
+    }
+
+  } catch (error) {
+    console.error('Ban command error:', error);
+    await interaction.reply({ 
+      content: '❌ Fehler beim Bannen des Users!', 
+      ephemeral: true 
+    });
+  }
+}
+
+// 🔹 ClearWarns Command
+async function clearwarnsCommand(interaction) {
+  if (!interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers)) {
+    return interaction.reply({ 
+      content: '❌ Du hast keine Berechtigung um Warns zu löschen!', 
+      ephemeral: true 
+    });
+  }
+
+  const user = interaction.options.getUser('user');
+
+  try {
+    const clearedCount = await clearWarns(user.id);
+
+    const embed = new EmbedBuilder()
+      .setTitle('✅ Warns gelöscht')
+      .setDescription(`${clearedCount} Verwarnungen von ${user.tag} wurden gelöscht!`)
+      .setColor(0x00FF00)
+      .addFields(
+        { name: '👤 Moderator', value: interaction.user.tag, inline: true }
+      );
+
+    await interaction.reply({ embeds: [embed] });
+
+    // Log clear warns
+    await logAction(
+      'Warns Gelöscht',
+      `${interaction.user.tag} hat ${clearedCount} Warns von ${user.tag} gelöscht`,
+      0x00FF00,
+      interaction.user
+    );
+
+  } catch (error) {
+    console.error('ClearWarns command error:', error);
+    await interaction.reply({ 
+      content: '❌ Fehler beim Löschen der Warns!', 
+      ephemeral: true 
+    });
+  }
+}
+
 // 🔹 Werbung Commands
 async function advertisementCommand(interaction) {
   if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
@@ -2590,6 +3527,77 @@ const commands = [
           .setDescription('Intervall in Minuten (nur bei start)')
           .setRequired(false)),
     execute: advertisementCommand
+  },
+  // Moderation Commands
+  {
+    data: new SlashCommandBuilder()
+      .setName('warn')
+      .setDescription('Verwarne einen User')
+      .addUserOption(option =>
+        option.setName('user')
+          .setDescription('User der verwarnt werden soll')
+          .setRequired(true))
+      .addStringOption(option =>
+        option.setName('grund')
+          .setDescription('Grund für die Verwarnung')
+          .setRequired(false)),
+    execute: warnCommand
+  },
+  {
+    data: new SlashCommandBuilder()
+      .setName('userinfo')
+      .setDescription('Zeige Informationen über einen User an')
+      .addUserOption(option =>
+        option.setName('user')
+          .setDescription('User über den Informationen angezeigt werden sollen')
+          .setRequired(false)),
+    execute: userinfoCommand
+  },
+  {
+    data: new SlashCommandBuilder()
+      .setName('userinfoadd')
+      .setDescription('Füge eine Notiz zu einem User hinzu')
+      .addUserOption(option =>
+        option.setName('user')
+          .setDescription('User zu dem eine Notiz hinzugefügt werden soll')
+          .setRequired(true))
+      .addStringOption(option =>
+        option.setName('notiz')
+          .setDescription('Notiz die hinzugefügt werden soll')
+          .setRequired(true)),
+    execute: userinfoaddCommand
+  },
+  {
+    data: new SlashCommandBuilder()
+      .setName('ban')
+      .setDescription('Banne einen User')
+      .addUserOption(option =>
+        option.setName('user')
+          .setDescription('User der gebannt werden soll')
+          .setRequired(true))
+      .addStringOption(option =>
+        option.setName('grund')
+          .setDescription('Grund für den Ban')
+          .setRequired(false))
+      .addStringOption(option =>
+        option.setName('dauer')
+          .setDescription('Dauer des Bans (z.B. 7d, 30d, 1h)')
+          .setRequired(false))
+      .addBooleanOption(option =>
+        option.setName('permanent')
+          .setDescription('Permanenter Ban')
+          .setRequired(false)),
+    execute: banCommand
+  },
+  {
+    data: new SlashCommandBuilder()
+      .setName('clearwarns')
+      .setDescription('Lösche alle Warns eines Users')
+      .addUserOption(option =>
+        option.setName('user')
+          .setDescription('User dessen Warns gelöscht werden sollen')
+          .setRequired(true)),
+    execute: clearwarnsCommand
   }
 ];
 
@@ -2614,6 +3622,41 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 
   if (interaction.isButton()) {
+    // 🔹 Admin Panel - Get Role Button
+    if (interaction.customId.startsWith('get_role_')) {
+      const roleId = interaction.customId.replace('get_role_', '');
+      
+      try {
+        const role = interaction.guild.roles.cache.get(roleId);
+        if (!role) {
+          return interaction.reply({ 
+            content: '❌ Rolle nicht gefunden!', 
+            ephemeral: true 
+          });
+        }
+        
+        if (interaction.member.roles.cache.has(roleId)) {
+          return interaction.reply({ 
+            content: `✅ Du hast bereits die Rolle **${role.name}**!`, 
+            ephemeral: true 
+          });
+        }
+        
+        await interaction.member.roles.add(role);
+        await interaction.reply({ 
+          content: `✅ Du hast die Rolle **${role.name}** erhalten! 🎉`, 
+          ephemeral: true 
+        });
+      } catch (error) {
+        console.error('Error giving role:', error);
+        await interaction.reply({ 
+          content: '❌ Fehler beim Vergeben der Rolle!', 
+          ephemeral: true 
+        });
+      }
+      return;
+    }
+    
     // Quests Button
     if (interaction.customId === 'check_quests') {
       await checkQuestsCommand(interaction);
@@ -3343,16 +4386,30 @@ client.once(Events.ClientReady, async () => {
   console.log(`👥 Connected to ${client.guilds.cache.size} guilds`);
   console.log(`📊 Users: ${client.users.cache.size}`);
   
+  // 🔹 Web Panel initialisieren und Bot-Referenz übergeben
+  setBot(client);
+  console.log('🌐 Web Panel ist bereit');
+  
+  // 🔹 Bot Stats Tabelle initialisieren und Update Loop starten
+  await initBotStatsTable();
+  startBotStatsUpdate(client);
+  
   // Erstelle music Ordner falls nicht vorhanden
   if (!fs.existsSync('./music')) {
     fs.mkdirSync('./music');
     console.log('📁 Music folder created');
   }
   
-  // 🔹 WICHTIG: Quest und Shop Nachrichten erstellen
+  // 🔹 WICHTIG: Auto-Roles für alle Mitglieder vergeben
+  console.log('🔄 Vergebe Auto-Roles für alle Mitglieder...');
+  // await assignAutoRolesToAll(); // Temporarily disabled for debugging
+  
+  // 🔹 WICHTIG: Quest und Shop Nachrichten erstellen (VERBESSERTE VERSION)
   try {
     console.log('🔄 Initializing Quests and Shop messages...');
     
+    // Temporarily disabled for debugging - these may be causing the crash
+    /*
     // Warte kurz damit alle Channels geladen sind
     await new Promise(resolve => setTimeout(resolve, 3000));
     
@@ -3364,32 +4421,40 @@ client.once(Events.ClientReady, async () => {
       console.error(`❌ Quests Channel ${QUESTS_CONFIG.quests_channel} nicht gefunden!`);
     } else {
       console.log(`✅ Quests Channel gefunden: ${questsChannel.name}`);
-      await createQuestsMessage();
+      const questsUpdated = await createQuestsMessage();
+      if (!questsUpdated) {
+        console.log('ℹ️  Quests-Nachricht war bereits aktuell');
+      }
     }
     
     if (!shopChannel) {
       console.error(`❌ Shop Channel ${QUESTS_CONFIG.shop_channel} nicht gefunden!`);
     } else {
       console.log(`✅ Shop Channel gefunden: ${shopChannel.name}`);
-      await createShopMessage();
+      const shopUpdated = await createShopMessage();
+      if (!shopUpdated) {
+        console.log('ℹ️  Shop-Nachricht war bereits aktuell');
+      }
     }
     
-    console.log('✅ Quests and Shop messages initialized successfully');
+    console.log('✅ Quests and Shop messages initialization completed');
     
     // 🔹 Werbung-Feature starten
     console.log('🔄 Starting advertisement feature...');
-    startAdvertisement();
+    // startAdvertisement(); // Temporarily disabled for debugging
+    */
     
+    console.log('✅ Quests and Shop initialization skipped (debugging)');
   } catch (error) {
     console.error('❌ Error initializing Quests/Shop messages:', error);
   }
-});// Erstelle music Ordner falls nicht vorhanden
-  if (!fs.existsSync('./music')) {
-    fs.mkdirSync('./music');
-    console.log('📁 Music folder created');
-  }
-  
+});
 
+// 🔹 Guild Member Add Event für Auto-Role
+client.on(Events.GuildMemberAdd, async (member) => {
+  console.log(`👤 Neues Mitglied: ${member.user.tag}`);
+  await assignAutoRole(member);
+});
 
 // 🔹 Bot Login
 client.login(process.env.DISCORD_TOKEN);

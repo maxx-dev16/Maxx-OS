@@ -127,6 +127,98 @@ const commands = [
         max_value: 1440 // Maximal 24 Stunden
       }
     ]
+  },
+
+  // 🔹 Moderation Commands
+  {
+    name: 'warn',
+    description: 'Verwarne einen User',
+    options: [
+      {
+        name: 'user',
+        description: 'User der verwarnt werden soll',
+        type: 6, // USER
+        required: true
+      },
+      {
+        name: 'grund',
+        description: 'Grund für die Verwarnung',
+        type: 3, // STRING
+        required: false
+      }
+    ]
+  },
+  {
+    name: 'userinfo',
+    description: 'Zeige Informationen über einen User an',
+    options: [
+      {
+        name: 'user',
+        description: 'User über den Informationen angezeigt werden sollen',
+        type: 6, // USER
+        required: false
+      }
+    ]
+  },
+  {
+    name: 'userinfoadd',
+    description: 'Füge eine Notiz zu einem User hinzu',
+    options: [
+      {
+        name: 'user',
+        description: 'User zu dem eine Notiz hinzugefügt werden soll',
+        type: 6, // USER
+        required: true
+      },
+      {
+        name: 'notiz',
+        description: 'Notiz die hinzugefügt werden soll',
+        type: 3, // STRING
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'ban',
+    description: 'Banne einen User',
+    options: [
+      {
+        name: 'user',
+        description: 'User der gebannt werden soll',
+        type: 6, // USER
+        required: true
+      },
+      {
+        name: 'grund',
+        description: 'Grund für den Ban',
+        type: 3, // STRING
+        required: false
+      },
+      {
+        name: 'dauer',
+        description: 'Dauer des Bans (z.B. 7d, 30d, 1h)',
+        type: 3, // STRING
+        required: false
+      },
+      {
+        name: 'permanent',
+        description: 'Permanenter Ban',
+        type: 5, // BOOLEAN
+        required: false
+      }
+    ]
+  },
+  {
+    name: 'clearwarns',
+    description: 'Lösche alle Warns eines Users',
+    options: [
+      {
+        name: 'user',
+        description: 'User dessen Warns gelöscht werden sollen',
+        type: 6, // USER
+        required: true
+      }
+    ]
   }
 ];
 

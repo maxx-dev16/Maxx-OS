@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maxx OS - Panel</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        * {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+        }
+
+        body {
+            background: #f5f7fb;
+            color: #333;
+        }
+
+        .navbar {
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .card {
+            border: none;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            border-radius: 12px;
+        }
+
+        .btn-gradient {
+            background: var(--primary-gradient);
+            border: none;
+            color: white;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            text-align: center;
+            border: none;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        }
+
+        .stat-card h3 {
+            font-size: 2rem;
+            color: #667eea;
+            margin: 0.5rem 0 0 0;
+        }
+
+        .stat-card p {
+            color: #999;
+            margin: 0;
+            font-size: 0.9rem;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 1.5rem;
+            border-radius: 12px;
+            color: white;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+            animation: slideIn 0.3s ease;
+            z-index: 9999;
+        }
+
+        .notification.success { background: #31c44e; }
+        .notification.error { background: #f5576c; }
+        .notification.warning { background: #ffa500; }
+
+        @keyframes slideIn {
+            from { transform: translateX(400px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+
+        .toggle-slider {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+            background-color: #ccc;
+            transition: 0.4s;
+            border-radius: 34px;
+            cursor: pointer;
+        }
+
+        .toggle-slider:before {
+            content: "";
+            position: absolute;
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: 0.4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .toggle-slider {
+            background-color: #667eea;
+        }
+
+        input:checked + .toggle-slider:before {
+            transform: translateX(26px);
+        }
+
+        .debug-console {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            width: 450px;
+            max-height: 350px;
+            background: #1e1e1e;
+            color: #00ff00;
+            border: 2px solid #00ff00;
+            border-radius: 8px;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            overflow-y: auto;
+            z-index: 10000;
+            display: none;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+        }
+
+        .debug-console.show { display: block; }
+
+        .debug-console-toggle {
+            position: fixed;
+            bottom: 25px;
+            right: 25px;
+            padding: 10px 15px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 12px;
+            z-index: 9999;
+            font-weight: bold;
+        }
+
+        .debug-log-entry { margin: 2px 0; padding: 2px 5px; border-bottom: 1px solid #333; }
+        .debug-log-entry.error { color: #ff4444; }
+        .debug-log-entry.warning { color: #ffaa00; }
+        .debug-log-entry.success { color: #44ff44; }
+        .debug-log-entry.info { color: #00ccff; }
+
+        .user-avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
+        .badge-warn { background: #f5576c; color: white; padding: 0.5rem 1rem; border-radius: 20px; font-size: 0.9rem; }
+        .btn-small { padding: 0.5rem 1rem; font-size: 0.9rem; margin: 0.2rem; }
+
+        .loading {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            align-items: center;
+            justify-content: center;
+            z-index: 9998;
+        }
+
+        .loading.show { display: flex; }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <button class="debug-console-toggle" onclick="toggleDebugConsole()">DEBUG</button>
+
+    <div id="debugConsole" class="debug-console">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+            <strong>DEBUG CONSOLE</strong>
+            <button onclick="clearDebugLog()" style="background: none; border: none; color: #00ff00; cursor: pointer;">X</button>
+        </div>
+        <div id="debugLog" style="max-height: 300px; overflow-y: auto;">[READY]</div>
+    </div>
+
+    <div id="loading" class="loading">
+        <div class="spinner"></div>
+    </div>
+
+    <nav class="navbar navbar-expand-lg navbar-light">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="javascript:void(0)"><strong>Maxx OS - Panel</strong></a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link active" href="javascript:switchTab('dashboard')">Dashboard</a></li>
+                    <li class="nav-item"><a class="nav-link" href="javascript:switchTab('mod')">Moderator</a></li>
+                    <li class="nav-item"><a class="nav-link" href="javascript:switchTab('admin')">Admin</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid my-4">
+        <div id="dashboard" class="tab-content active">
+            <h2>Dashboard</h2>
+            <div class="row mb-4">
+                <div class="col-md-3 col-sm-6 mb-3">
+                    <div class="stat-card">
+                        <small>Active Users</small>
+                        <h3 id="stat-users">-</h3>
+                    </div>
+                </div>
+                <div class="col-md-3 col-sm-6 mb-3">
+                    <div class="stat-card">
+                        <small>Warnings</small>
+                        <h3 id="stat-warns">-</h3>
+                    </div>
+                </div>
+                <div class="col-md-3 col-sm-6 mb-3">
+                    <div class="stat-card">
+                        <small>Messages</small>
+                        <h3 id="stat-messages">-</h3>
+                    </div>
+                </div>
+                <div class="col-md-3 col-sm-6 mb-3">
+                    <div class="stat-card">
+                        <small>Uptime</small>
+                        <h3 id="stat-uptime">-</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card p-4">
+                        <h5>Settings</h5>
+                        <hr>
+                        <div class="d-flex justify-content-between">
+                            <label>Greeting Feature:</label>
+                            <div class="toggle-switch">
+                                <input type="checkbox" id="greetingToggle" onchange="toggleGreeting()">
+                                <span class="toggle-slider"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="mod" class="tab-content">
+            <h2>Moderator Dashboard</h2>
+            <div class="card">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>ID</th>
+                                <th>Warnings</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersTableBody">
+                            <tr><td colspan="4" class="text-center text-muted py-4">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div id="admin" class="tab-content">
+            <h2>Admin Dashboard</h2>
+            <div class="card p-4">
+                <h5>Send Message</h5>
+                <div class="mb-3">
+                    <label>Channel:</label>
+                    <select id="channelSelect" class="form-select">
+                        <option value="">Loading channels...</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label>Role:</label>
+                    <select id="roleSelect" class="form-select">
+                        <option value="">Loading roles...</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label>Message:</label>
+                    <textarea id="messageText" class="form-control" rows="5"></textarea>
+                </div>
+                <button class="btn btn-gradient" onclick="sendMessage()">Send Message</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // DEBUG CONSOLE
+        let debugLogs = [];
+        const MAX_DEBUG_LOGS = 50;
+
+        function addDebugLog(message, type) {
+            type = type || 'info';
+            const timestamp = new Date().toLocaleTimeString('de-DE');
+            const entry = '[' + timestamp + '] ' + message;
+            debugLogs.push({ entry: entry, type: type });
+            
+            if (debugLogs.length > MAX_DEBUG_LOGS) {
+                debugLogs.shift();
+            }
+
+            updateDebugConsole();
+            console.log('[' + type.toUpperCase() + ']', message);
+        }
+
+        function updateDebugConsole() {
+            var debugLog = document.getElementById('debugLog');
+            if (debugLog) {
+                debugLog.innerHTML = debugLogs.map(function(log) {
+                    return '<div class="debug-log-entry ' + log.type + '">' + log.entry + '</div>';
+                }).join('');
+                debugLog.scrollTop = debugLog.scrollHeight;
+            }
+        }
+
+        function toggleDebugConsole() {
+            var debugConsole = document.getElementById('debugConsole');
+            if (debugConsole) {
+                debugConsole.classList.toggle('show');
+            }
+        }
+
+        function clearDebugLog() {
+            debugLogs = [];
+            updateDebugConsole();
+            addDebugLog('Debug Log cleared', 'info');
+        }
+
+        // CONFIG
+        // Make API base configurable. You can override by setting window.__API_BASE_URL__ before this script runs.
+        var API_BASE_URL = (function(){
+            if (window.__API_BASE_URL__) return window.__API_BASE_URL__;
+            // If opened locally, use localhost backend
+            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                return 'http://localhost:22020';
+            }
+            // Default: same origin (i.e. https://maxx-os.page.gd). This will attempt requests to /api/... on the same host.
+            return window.location.protocol + '//' + window.location.hostname + (window.location.port ? ':'+window.location.port : '');
+        })();
+
+        addDebugLog('API Base URL: ' + API_BASE_URL, 'info');
+        addDebugLog('Hostname: ' + window.location.hostname, 'info');
+        addDebugLog('Protocol: ' + window.location.protocol, 'info');
+
+        // API CALL
+        function apiCall(url, options) {
+            options = options || {};
+            var fullUrl = API_BASE_URL + url;
+            addDebugLog('API Request: ' + (options.method || 'GET') + ' ' + fullUrl, 'info');
+            
+            return fetch(fullUrl, {
+                method: options.method || 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(options.headers || {})
+                },
+                body: options.body
+            })
+            .then(function(response) {
+                addDebugLog('Response Status: ' + response.status + ' ' + response.statusText, response.ok ? 'success' : 'error');
+
+                // If hosting provider redirects to an HTML error page (common on free hosts),
+                // the content-type will be text/html. We catch that and return a helpful error.
+                var contentType = response.headers && response.headers.get ? response.headers.get('content-type') : null;
+                if (contentType && contentType.indexOf('text/html') !== -1) {
+                    addDebugLog('Received HTML response (possible hosting error redirect) from: ' + response.url, 'error');
+                    return response.text().then(function(txt) {
+                        return { success: false, error: 'HTML response received from ' + response.url + '. This usually means the request was redirected to a hosting error page (404) and the backend is not reachable at this origin. Check API_BASE_URL and your reverse-proxy configuration.' };
+                    });
+                }
+
+                return response.json().then(function(data) {
+                    if (!response.ok) {
+                        addDebugLog('API Error: ' + JSON.stringify(data), 'error');
+                    } else {
+                        addDebugLog('API Success', 'success');
+                    }
+                    return { success: response.ok, data: data };
+                }).catch(function(err) {
+                    // JSON parsing failed — return raw text for debugging
+                    addDebugLog('JSON parse error: ' + err.message, 'error');
+                    return response.text().then(function(txt) {
+                        return { success: false, error: 'Invalid JSON response. Raw response: ' + txt };
+                    });
+                });
+            })
+            .catch(function(error) {
+                addDebugLog('Fetch Error: ' + error.message, 'error');
+                // If the browser blocked the preflight (CORS), we won't receive a normal fetch error body.
+                var hints = 'Possible causes: the backend is not accessible at ' + API_BASE_URL + ', or the request was blocked by CORS. Ensure the backend is running and reachable, and that CORS is configured to allow origin ' + window.location.origin + '.';
+                return { success: false, error: error.message + ' | ' + hints };
+            });
+        }
+
+        function showNotification(message, type) {
+            type = type || 'success';
+            addDebugLog('Notification: ' + message, type);
+            
+            var notification = document.createElement('div');
+            notification.className = 'notification ' + type;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            
+            setTimeout(function() {
+                notification.remove();
+            }, 3000);
+        }
+
+        function switchTab(tabName) {
+            addDebugLog('Tab changed to: ' + tabName, 'info');
+            
+            document.querySelectorAll('.tab-content').forEach(function(tab) {
+                tab.classList.remove('active');
+            });
+            document.getElementById(tabName).classList.add('active');
+            
+            if (tabName === 'dashboard') {
+                loadStatistics();
+                loadGreetingStatus();
+            } else if (tabName === 'mod') {
+                loadUsers();
+            } else if (tabName === 'admin') {
+                loadChannels();
+                loadRoles();
+            }
+        }
+
+        function showLoading(show) {
+            show = show !== false;
+            document.getElementById('loading').classList[show ? 'add' : 'remove']('show');
+        }
+
+        // DASHBOARD
+        function loadStatistics() {
+            addDebugLog('Loading statistics...', 'info');
+            apiCall('/api/admin/statistics').then(function(result) {
+                if (result.success) {
+                    var stats = result.data.data;
+                    document.getElementById('stat-users').textContent = stats.totalUsers || '0';
+                    document.getElementById('stat-warns').textContent = stats.warnsToday || '0';
+                    document.getElementById('stat-messages').textContent = stats.totalMessages || '0';
+                    
+                    var uptime = stats.uptime || 0;
+                    var hours = Math.floor(uptime / 3600);
+                    var minutes = Math.floor((uptime % 3600) / 60);
+                    document.getElementById('stat-uptime').textContent = hours + 'h ' + minutes + 'm';
+                    
+                    addDebugLog('Statistics loaded: ' + stats.totalUsers + ' users', 'success');
+                } else {
+                    addDebugLog('Failed to load statistics: ' + result.error, 'error');
+                    showNotification('Error loading statistics!', 'error');
+                }
+            });
+        }
+
+        function loadGreetingStatus() {
+            addDebugLog('Loading greeting status...', 'info');
+            apiCall('/api/greeting-status').then(function(result) {
+                if (result.success) {
+                    document.getElementById('greetingToggle').checked = result.data.data.enabled === 1;
+                    addDebugLog('Greeting status loaded', 'success');
+                } else {
+                    addDebugLog('Failed to load greeting status: ' + result.error, 'error');
+                }
+            });
+        }
+
+        function toggleGreeting() {
+            addDebugLog('Toggling greeting...', 'info');
+            showLoading(true);
+            
+            apiCall('/api/greeting-toggle', {
+                method: 'POST',
+                body: JSON.stringify({})
+            }).then(function(result) {
+                showLoading(false);
+                if (result.success) {
+                    addDebugLog('Greeting toggled', 'success');
+                    showNotification('Settings saved!', 'success');
+                } else {
+                    addDebugLog('Failed to toggle greeting: ' + result.error, 'error');
+                    showNotification('Error saving settings!', 'error');
+                }
+            });
+        }
+
+        // MOD DASHBOARD
+        function loadUsers() {
+            addDebugLog('Loading users...', 'info');
+            apiCall('/api/mod/users').then(function(result) {
+                if (result.success) {
+                    var users = result.data.data || [];
+                    addDebugLog('Loaded ' + users.length + ' users', 'success');
+                    renderUsersTable(users);
+                } else {
+                    addDebugLog('Failed to load users: ' + result.error, 'error');
+                    showNotification('Error loading users: ' + result.error, 'error');
+                }
+            });
+        }
+
+        function renderUsersTable(users) {
+            var tbody = document.getElementById('usersTableBody');
+            if (users.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">No users found</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = users.map(function(user) {
+                return '<tr>' +
+                    '<td><img src="' + (user.avatar || 'https://via.placeholder.com/32') + '" class="user-avatar" alt="' + user.username + '"><strong>' + user.username + '</strong></td>' +
+                    '<td><code>' + user.user_id + '</code></td>' +
+                    '<td><span class="badge-warn">' + (user.warns || 0) + '</span></td>' +
+                    '<td>' +
+                    '<button class="btn btn-sm btn-outline-warning btn-small" onclick="promptWarn(\'' + user.user_id + '\', \'' + user.username + '\')">Warn</button> ' +
+                    '<button class="btn btn-sm btn-outline-danger btn-small" onclick="removeWarn(\'' + user.user_id + '\')">Remove</button>' +
+                    '</td>' +
+                    '</tr>';
+            }).join('');
+        }
+
+        function promptWarn(userId, username) {
+            var reason = prompt('Warn reason for ' + username + ':');
+            if (reason !== null && reason.trim() !== '') {
+                addWarn(userId, reason);
+            }
+        }
+
+        function addWarn(userId, reason) {
+            addDebugLog('Adding warn for user ' + userId + ': ' + reason, 'warning');
+            showLoading(true);
+            
+            apiCall('/api/mod/warn', {
+                method: 'POST',
+                body: JSON.stringify({ 
+                    user_id: userId, 
+                    reason: reason
+                })
+            }).then(function(result) {
+                showLoading(false);
+                if (result.success) {
+                    addDebugLog('Warn added successfully', 'success');
+                    showNotification('Warning added!', 'success');
+                    loadUsers();
+                } else {
+                    addDebugLog('Failed to add warn: ' + result.error, 'error');
+                    showNotification('Error adding warning!', 'error');
+                }
+            });
+        }
+
+        function removeWarn(userId) {
+            if (confirm('Remove warning for user ' + userId + '?')) {
+                addDebugLog('Removing warn for user ' + userId, 'warning');
+                showLoading(true);
+                
+                apiCall('/api/mod/remove-warn', {
+                    method: 'POST',
+                    body: JSON.stringify({ 
+                        user_id: userId
+                    })
+                }).then(function(result) {
+                    showLoading(false);
+                    if (result.success) {
+                        addDebugLog('Warn removed successfully', 'success');
+                        showNotification('Warning removed!', 'success');
+                        loadUsers();
+                    } else {
+                        addDebugLog('Failed to remove warn: ' + result.error, 'error');
+                        showNotification('Error removing warning!', 'error');
+                    }
+                });
+            }
+        }
+
+        // ADMIN DASHBOARD
+        function loadChannels() {
+            addDebugLog('Loading channels...', 'info');
+            apiCall('/api/admin/channels').then(function(result) {
+                if (result.success) {
+                    var channels = result.data.data || [];
+                    var select = document.getElementById('channelSelect');
+                    select.innerHTML = channels.map(function(ch) {
+                        return '<option value="' + ch.id + '">#' + ch.name + '</option>';
+                    }).join('');
+                    addDebugLog('Loaded ' + channels.length + ' channels', 'success');
+                } else {
+                    addDebugLog('Failed to load channels: ' + result.error, 'error');
+                }
+            });
+        }
+
+        function loadRoles() {
+            addDebugLog('Loading roles...', 'info');
+            apiCall('/api/admin/roles').then(function(result) {
+                if (result.success) {
+                    var roles = result.data.data || [];
+                    var select = document.getElementById('roleSelect');
+                    select.innerHTML = roles.map(function(role) {
+                        return '<option value="' + role.id + '">@' + role.name + '</option>';
+                    }).join('');
+                    addDebugLog('Loaded ' + roles.length + ' roles', 'success');
+                } else {
+                    addDebugLog('Failed to load roles: ' + result.error, 'error');
+                }
+            });
+        }
+
+        function sendMessage() {
+            var channelId = document.getElementById('channelSelect').value;
+            var roleId = document.getElementById('roleSelect').value;
+            var message = document.getElementById('messageText').value;
+
+            if (!channelId || !roleId || !message.trim()) {
+                addDebugLog('Not all fields filled', 'warning');
+                showNotification('Please fill all fields!', 'warning');
+                return;
+            }
+
+            addDebugLog('Sending message to channel ' + channelId + '...', 'warning');
+            showLoading(true);
+            
+            apiCall('/api/admin/send-message', {
+                method: 'POST',
+                body: JSON.stringify({ 
+                    channel_id: channelId, 
+                    role_id: roleId, 
+                    message: message,
+                    button_text: 'Ping me'
+                })
+            }).then(function(result) {
+                showLoading(false);
+                if (result.success) {
+                    addDebugLog('Message sent', 'success');
+                    showNotification('Message sent!', 'success');
+                    document.getElementById('messageText').value = '';
+                } else {
+                    addDebugLog('Failed to send message: ' + result.error, 'error');
+                    showNotification('Error sending message!', 'error');
+                }
+            });
+        }
+
+        // INIT
+        addDebugLog('Panel initialized', 'success');
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            addDebugLog('DOM loaded', 'success');
+            loadStatistics();
+            loadGreetingStatus();
+        });
+    </script>
+</body>
+</html>
